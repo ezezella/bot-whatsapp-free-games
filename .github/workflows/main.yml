@@ -2,13 +2,14 @@ name: Check Games Cron
 
 on:
   schedule:
-    # Esto corre cada 6 horas. Puedes ajustarlo usando sintaxis Cron.
-    - cron: '0 */6 * * *'
-  workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub para probar
+    - cron: '*/30 * * * *' # Ejecución cada 30 minutos
+  workflow_dispatch: # Permite ejecución manual
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Permiso necesario para guardar el historial
     env:
       TWILIO_SID: ${{ secrets.TWILIO_SID }}
       TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
@@ -16,8 +17,22 @@ jobs:
       WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
     steps:
       - uses: actions/checkout@v3
+      
       - uses: actions/setup-node@v3
         with:
           node-version: 18
+          cache: 'npm' # Optimiza el tiempo de instalación
+          
       - run: npm install
-      - run: node index.js
+      
+      - name: Run Bot
+        run: node index.js
+        
+      - name: Save History
+        run: |
+          git config --global user.name "GameBot"
+          git config --global user.email "bot@github.com"
+          # Agrega el archivo de historial. Si no hay cambios, no falla.
+          git add notified_games.json || exit 0
+          git commit -m "Update notified games list" || exit 0
+          git push
