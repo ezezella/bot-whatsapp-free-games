@@ -16,14 +16,15 @@ jobs:
       TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
       WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v3
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 18
-          # SE ELIMINÓ LA LÍNEA DE CACHE AQUÍ
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: npm install
 
       - name: Run Bot
