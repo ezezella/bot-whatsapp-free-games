@@ -1,0 +1,23 @@
+name: Check Games Cron
+
+on:
+  schedule:
+    # Esto corre cada 6 horas. Puedes ajustarlo usando sintaxis Cron.
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub para probar
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    env:
+      TWILIO_SID: ${{ secrets.TWILIO_SID }}
+      TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
+      TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+      WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - run: npm install
+      - run: node index.js
