@@ -2,14 +2,14 @@ name: Check Games Cron
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # Ejecución cada 30 minutos
-  workflow_dispatch: # Permite ejecución manual
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Permiso necesario para guardar el historial
+      contents: write
     env:
       TWILIO_SID: ${{ secrets.TWILIO_SID }}
       TWILIO_TOKEN: ${{ secrets.TWILIO_TOKEN }}
@@ -17,21 +17,22 @@ jobs:
       WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
     steps:
       - uses: actions/checkout@v3
-      
+
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-          
-      - run: npm install
-      
+          # SE ELIMINÓ LA LÍNEA DE CACHE AQUÍ
+
+      - name: Install dependencies
+        run: npm install
+
       - name: Run Bot
         run: node index.js
-        
+
       - name: Save History
         run: |
           git config --global user.name "GameBot"
           git config --global user.email "bot@github.com"
-          # Agrega el archivo de historial. Si no hay cambios, no falla.
           git add notified_games.json || exit 0
           git commit -m "Update notified games list" || exit 0
           git push
