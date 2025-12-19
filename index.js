@@ -1,8 +1,15 @@
 import axios from "axios";
 import Twilio from "twilio";
+import fs from "fs";
 
-// Configuración de Twilio desde variables de entorno
 const client = Twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
+const DB_FILE = "notified_games.json";
+
+// 1. Cargar historial de juegos ya notificados
+let notifiedGames = [];
+if (fs.existsSync(DB_FILE)) {
+  notifiedGames = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+}
 
 async function sendWhatsApp(msg) {
   try {
@@ -11,36 +18,46 @@ async function sendWhatsApp(msg) {
       to: process.env.WHATSAPP_TO,
       body: msg,
     });
-    console.log("Mensaje enviado:", msg);
   } catch (error) {
-    console.error("Error enviando WhatsApp:", error);
+    console.error("Error Twilio:", error.message);
   }
 }
 
-async function checkEpic() {
-  const res = await axios.get("https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions");
-  const games = res.data.data.Catalog.searchStore.elements;
-  for (const g of games) {
-    // Verificamos si es un juego actualmente gratuito (precio 0)
-    const isFree = g.price.totalPrice.discountPrice === 0;
-    if (isFree && g.promotions?.promotionalOffers?.length) {
-      await sendWhatsApp(`🎁 Epic GRATIS:\n${g.title}`);
+async function checkGames() {
+  try {
+    // Buscamos juegos de PC, Steam, Epic y Amazon
+    const res = await axios.get("https://www.gamerpower.com/api/giveaways?type=game");
+    const games = res.data;
+
+    const platformsInteres = ["PC", "Epic Games Store", "Steam", "Amazon Prime"];
+    let newNotifications = false;
+
+    for (const g of games) {
+      // Filtrar por plataformas y que sea 100% descuento
+      if (g.status === "Active" && g.worth === "N/A" || g.worth.includes("100%")) {
+        
+        if (!notifiedGames.includes(g.id)) {
+          console.log(`¡Nuevo juego encontrado!: ${g.title}`);
+          
+          await sendWhatsApp(`🎮 *JUEGO GRATIS EN ${g.platforms.toUpperCase()}*\n\n🎁 *${g.title}*\n\n🔗 Link: ${g.open_giveaway_url}`);
+          
+          notifiedGames.push(g.id);
+          newNotifications = true;
+        }
+      }
     }
+
+    // 2. Si hubo juegos nuevos, guardar el historial actualizado
+    if (newNotifications) {
+      fs.writeFileSync(DB_FILE, JSON.stringify(notifiedGames));
+      console.log("Historial actualizado.");
+    } else {
+      console.log("No hay juegos nuevos desde la última revisión.");
+    }
+
+  } catch (error) {
+    console.error("Error al obtener juegos:", error.message);
   }
 }
 
-async function checkSteam() {
-  const res = await axios.get("https://store.steampowered.com/api/featuredcategories/?cc=US");
-  const free = res.data.specials.items.filter(i => i.final_price === 0);
-  for (const g of free) {
-    await sendWhatsApp(`🎮 Steam GRATIS:\n${g.name}`);
-  }
-}
-
-// Ejecución principal
-(async () => {
-  console.log("Iniciando chequeo...");
-  await checkEpic();
-  await checkSteam();
-  console.log("Finalizado.");
-})();
+checkGames();
