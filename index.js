@@ -5,10 +5,11 @@ import fs from "fs";
 const client = Twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
 const DB_FILE = "notified_games.json";
 
-// 1. Cargar historial de juegos ya notificados
 let notifiedGames = [];
 if (fs.existsSync(DB_FILE)) {
-  notifiedGames = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  try {
+    notifiedGames = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  } catch (e) { notifiedGames = []; }
 }
 
 async function sendWhatsApp(msg) {
@@ -18,27 +19,28 @@ async function sendWhatsApp(msg) {
       to: process.env.WHATSAPP_TO,
       body: msg,
     });
-  } catch (error) {
-    console.error("Error Twilio:", error.message);
-  }
+  } catch (error) { console.error("Error Twilio:", error.message); }
 }
 
 async function checkGames() {
   try {
-    // Buscamos juegos de PC, Steam, Epic y Amazon
     const res = await axios.get("https://www.gamerpower.com/api/giveaways?type=game");
     const games = res.data;
 
-    const platformsInteres = ["PC", "Epic Games Store", "Steam", "Amazon Prime"];
+    console.log(`Juegos detectados por la API: ${games.length}`);
     let newNotifications = false;
 
     for (const g of games) {
-      // Filtrar por plataformas y que sea 100% descuento
-      if (g.status === "Active" && g.worth === "N/A" || g.worth.includes("100%")) {
-        
+      // Filtro mejorado: PC, Steam, Epic o Amazon
+      const platformStr = g.platforms.toLowerCase();
+      const isTargetPlatform = ["pc", "steam", "epic", "amazon"].some(p => platformStr.includes(p));
+      
+      // Filtro de precio: "N/A" o "100%" suelen indicar que es gratis
+      const isFree = g.worth === "N/A" || g.worth.includes("100%");
+
+      if (isTargetPlatform && isFree) {
         if (!notifiedGames.includes(g.id)) {
-          console.log(`¡Nuevo juego encontrado!: ${g.title}`);
-          
+          console.log(`>> NOTIFICANDO: ${g.title} en ${g.platforms}`);
           await sendWhatsApp(`🎮 *JUEGO GRATIS EN ${g.platforms.toUpperCase()}*\n\n🎁 *${g.title}*\n\n🔗 Link: ${g.open_giveaway_url}`);
           
           notifiedGames.push(g.id);
@@ -47,17 +49,19 @@ async function checkGames() {
       }
     }
 
-    // 2. Si hubo juegos nuevos, guardar el historial actualizado
-    if (newNotifications) {
-      fs.writeFileSync(DB_FILE, JSON.stringify(notifiedGames));
-      console.log("Historial actualizado.");
-    } else {
-      console.log("No hay juegos nuevos desde la última revisión.");
+    // LIMPIEZA: Si el historial tiene más de 100 juegos, dejamos solo los 50 más nuevos
+    if (notifiedGames.length > 30) {
+      notifiedGames = notifiedGames.slice(-15);
     }
 
-  } catch (error) {
-    console.error("Error al obtener juegos:", error.message);
-  }
+    if (newNotifications) {
+      fs.writeFileSync(DB_FILE, JSON.stringify(notifiedGames));
+      console.log("Historial actualizado en el repo.");
+    } else {
+      console.log("No hay novedades para notificarte.");
+    }
+
+  } catch (error) { console.error("Error en el bot:", error.message); }
 }
 
 checkGames();
