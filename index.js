@@ -19,49 +19,74 @@ async function sendWhatsApp(msg) {
       to: process.env.WHATSAPP_TO,
       body: msg,
     });
-  } catch (error) { console.error("Error Twilio:", error.message); }
+    console.log("WhatsApp enviado con éxito.");
+  } catch (error) {
+    console.error("Error Twilio:", error.message);
+  }
 }
 
 async function checkGames() {
   try {
-    const res = await axios.get("https://www.gamerpower.com/api/giveaways?type=game");
+    // Obtenemos todos los giveaways activos
+    const res = await axios.get("https://www.gamerpower.com/api/giveaways");
     const games = res.data;
 
-    console.log(`Juegos detectados por la API: ${games.length}`);
-    let newNotifications = false;
+    console.log(`Analizando ${games.length} ofertas disponibles...`);
+    
+    let nuevosParaNotificar = [];
 
     for (const g of games) {
-      // Filtro mejorado: PC, Steam, Epic o Amazon
       const platformStr = g.platforms.toLowerCase();
-      const isTargetPlatform = ["pc", "steam", "epic", "amazon"].some(p => platformStr.includes(p));
       
-      // Filtro de precio: "N/A" o "100%" suelen indicar que es gratis
-      const isFree = g.worth === "N/A" || g.worth.includes("100%");
+      // FILTROS SOLICITADOS:
+      // 1. Epic Games
+      // 2. Steam
+      // 3. Amazon Prime Gaming
+      // 4. Microsoft Store (PC)
+      // 5. Ubisoft Connect
+      const matchPlataforma = [
+        "epic", 
+        "steam", 
+        "amazon", 
+        "prime", 
+        "microsoft", 
+        "ubisoft", 
+        "uplay"
+      ].some(p => platformStr.includes(p));
 
-      if (isTargetPlatform && isFree) {
-        if (!notifiedGames.includes(g.id)) {
-          console.log(`>> NOTIFICANDO: ${g.title} en ${g.platforms}`);
-          await sendWhatsApp(`🎮 *JUEGO GRATIS EN ${g.platforms.toUpperCase()}*\n\n🎁 *${g.title}*\n\n🔗 Link: ${g.open_giveaway_url}`);
-          
-          notifiedGames.push(g.id);
-          newNotifications = true;
-        }
+      // Solo juegos (no DLCs ni items) y que sean 100% gratis
+      const esJuegoGratis = (g.type === "Game") && (g.worth === "N/A" || g.worth.includes("100%"));
+
+      if (matchPlataforma && esJuegoGratis && !notifiedGames.includes(g.id)) {
+        console.log(`+ Nuevo juego detectado: ${g.title}`);
+        
+        nuevosParaNotificar.push(
+          `🎁 *${g.title}*\n🏢 Plataforma: ${g.platforms}\n🔗 ${g.open_giveaway_url}`
+        );
+        
+        notifiedGames.push(g.id);
       }
     }
 
-    // LIMPIEZA: Si el historial tiene más de 100 juegos, dejamos solo los 50 más nuevos
-    if (notifiedGames.length > 30) {
-      notifiedGames = notifiedGames.slice(-15);
-    }
+    // Si encontramos juegos nuevos, mandamos UN SOLO mensaje con la lista
+    if (nuevosParaNotificar.length > 0) {
+      const cabecera = `🎮 *¡NUEVOS JUEGOS GRATIS!* 🎮\n_Revisión: ${new Date().toLocaleString()}_\n\n`;
+      const cuerpo = nuevosParaNotificar.join("\n\n---\n\n");
+      
+      await sendWhatsApp(cabecera + cuerpo);
 
-    if (newNotifications) {
+      // Limpieza de historial para que no crezca infinitamente
+      if (notifiedGames.length > 30) notifiedGames = notifiedGames.slice(-15);
+      
       fs.writeFileSync(DB_FILE, JSON.stringify(notifiedGames));
-      console.log("Historial actualizado en el repo.");
+      console.log("Historial actualizado.");
     } else {
-      console.log("No hay novedades para notificarte.");
+      console.log("No se encontraron novedades.");
     }
 
-  } catch (error) { console.error("Error en el bot:", error.message); }
+  } catch (error) {
+    console.error("Error en el proceso:", error.message);
+  }
 }
 
 checkGames();
